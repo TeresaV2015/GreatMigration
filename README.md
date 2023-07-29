@@ -3,7 +3,7 @@ Probability and Statistics 1's Final Project
 
 This project, fondly called "The Great Migration," was a group project completed for my Probability and Statistic 1 class (Winter 2022) at the University of Denver. 
 
-Note that the bulk of this README can be found in the Final Paper. 
+Note that the bulk of this README can be found in the code (along with formulas and graphs). 
 
 ## Research Question and Significance of Research
 Do more people move based on cost of housing and income during times of economic uncertainty? Times of economic uncertainty in this timespan relate to the Great Recession (2008-2010) and, more recently, the impacts of COVID-19. While there are other conditions that cause economic hardship for different groups of people, everyone was affected by the two events stated earlier. Our research question was: "Do more people move based on cost of housing and income during times of economic uncertainity?" Based on the inter-state migration of people in recent years, we are hypothesizing that the population for each fluctuates based on the Housing Price Index and income. 
@@ -44,3 +44,13 @@ The linear model for state population with the co-variances X of mean HPI and me
 Based on the time series graphs, you can see that the growth of both HPI and income decreased and slowed at the start of the recession. However, when it came to the growth of population by state, it’s evident that growth remained the same without any of the slowing or decreasing we saw with HPI and income.
 
 Since our initial hypothesis that state populations fluctuate based on HPI and income was incorrect, we decided to forecast the HPI and income for the state of Alabama for the next five years using Holt’s method. In doing so, this paints a picture of what people can expect to happen with their housing costs and if their income is projected to keep up. You can see that both HPI and income are expected to keep going up. However, the HPI is increasing approximately 5.5% annually, while the median income is increasing much slower, approximately 1.5% annually.
+
+## Model Evaluation
+Linear model is a good choice to evaluate the impact of states’ population by mean HPI and median income (and after initial analysis, the impact of states’ mean HPI by median income and state population), because it allows us to see which covariance X has a significant contribution/impact (if any) on the Y.
+
+For time series forecasting, using the Holt model is a good choice to evaluate the future values of mean HPI and median income. The MAPE score associated with the forecasting was 1.61% for the HPI and 4.25% for the income which tells us that there’s a small percentage of error occurring in the outputs. In other words, the forecast is fairly accurate. If we had used the Naive method, the associated MAPE scores would be larger. 
+
+## Conclusion
+Considering the initial question refers to people moving, it was expected that the population for each state would fluctuate more during the years affected by economic uncertainty due to loss of jobs, housing affordability, and other issues related to lower income. However, as you can see by the linear models in the appendix (outputs 8 and 9), change in population is not significantly related to HPI or income. We came up with a second hypothesis: the mean HPI is affected by the median income and state population. The linear model’s summary indicated that the median income is a significant factor whereas the population isn’t. This paints a picture that HPI and income are more correlated with each other than population growth.
+
+Even though we found that the cost of housing is not tied to population fluctuation, the time series’ forecast is still a relevant tool that can be useful in helping predict trends. In this instance, twenty years of the mean HPI and median income were used to forecast the next five years of HPI and income via Holt’s Smoothing Method for the state of Alabama. In doing so, it provided additional insight into the disproportional growth of housing costs compared to income within Alabama.
