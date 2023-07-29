@@ -1,4 +1,4 @@
-# StatePopulation-HPI-Income
+# The Great Migration
 Probability and Statistics 1's Final Project
 
 This project, fondly called "The Great Migration," was a group project completed for my Probability and Statistic 1 class (Winter 2022) at the University of Denver. 
