@@ -1,0 +1,381 @@
+---
+title: "\\vspace{1.5in} \nThe Great Migration\n \\vspace{0.2in}"
+subtitle: "How Housing Prices are Influencing State Populations within the US\n \\vspace{1in}"
+author: "Anonymous1, Anonymous2, Teresa Vail\n \\vspace{1in}"
+date: "Project Due Date: 3/16/2022"
+header-includes: 
+  - \usepackage{setspace}\doublespacing
+output: pdf_document
+---
+
+\newpage
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(readr)
+library(readxl)
+library(tidyverse)
+library(ggpubr)
+library(ggplot2)
+library(forecast)
+library(fpp2)
+library(TTR)
+library(dplyr)
+```
+
+```{r dataPrep, include=FALSE}
+# create Final Data frame to store relevant data
+Final_data <- data.frame()
+
+# load Housing Price Index Dataset 
+HPI_data <- read_csv("HousingPriceIndex.csv")
+
+# clean data by year and state and add to Final Data
+for (year in 2000:2020){
+  tempData <- unique(HPI_data[HPI_data$yr == year & 
+                                (HPI_data$place_name %in% state.name | 
+                                   HPI_data$place_name == "District of Columbia"),] %>%
+    group_by(Place = place_name) %>%
+    summarize(Year = yr, Mean_HPI = mean(index_nsa)))
+  Final_data <- rbind(Final_data, tempData)
+}
+
+# load Median Household Income
+Income_data <- read_excel("h08.xlsx")
+
+# clean and add to Final Data
+tmp_Final <- data.frame()
+yrVec <- c(1999:2020)
+tmp_Inc_data <- Income_data[c(7,10:60),c(1,rev(c(2,4,6,8,12,14,16,18,22,
+                                                 24,26,28,30,32,34,36,38,40,42,44,46)))]
+for (colNum in 2:22){
+  tempData <- tmp_Inc_data[2:52,c(1,colNum)]
+  tempData$Year <- yrVec[colNum]
+  colnames(tempData) <- c("Place", "Mid_Income", "Year")
+  tmp_Final <- rbind(tmp_Final, tempData)
+}
+Final_data <- merge(Final_data, tmp_Final, by=c("Place", "Year"))
+
+# load State Population data
+pop_2000_2010 <- as.data.frame(read_excel("st-est00int-01.xls"))
+pop_2010_2019 <- as.data.frame(read_excel("nst-est2019-01.xlsx"))
+pop_2020_2021 <- as.data.frame(read_excel("NST-EST2021-POP.xlsx"))
+
+# clean and add State Population data to Final Data
+Final_data$Population <- NA
+for(i in 9:59){
+  for(j in 3:12){
+    Final_data[which(Final_data$Place == str_remove(pop_2000_2010[i,1],".") & 
+                       Final_data$Year == pop_2000_2010[3,j]),]$Population <- pop_2000_2010[i,j]
+  }
+}
+for(i in 9:59){
+  for(j in 4:13){
+    Final_data[which(Final_data$Place == str_remove(pop_2010_2019[i,1],".") & 
+                       Final_data$Year == pop_2010_2019[3,j]),]$Population <- pop_2010_2019[i,j]
+  }
+}
+for(i in 9:59){
+  Final_data[which(Final_data$Place == str_remove(pop_2020_2021[i,1],".") & 
+                     Final_data$Year == pop_2020_2021[3,3]),]$Population <- pop_2020_2021[i,3]
+}
+Final_data$Mid_Income <- as.numeric(gsub(",", "", as.character(Final_data$Mid_Income)))
+Final_data$Population <- as.numeric(gsub(",", "", as.character(Final_data$Population)))
+```
+
+```{r DataVis, include=FALSE}
+data_glimpse <- glimpse(Final_data)
+
+hist(Final_data[Final_data$Year == 2003,]$Mean_HPI)
+ggqqplot(Final_data[Final_data$Year == 2003,]$Mean_HPI)
+
+#output 1
+output_1 <- ggqqplot(Final_data$Mean_HPI, title="QQ Plot of Mean HPI")
+#output 2
+output_2 <- ggqqplot(Final_data$Mid_Income, title="QQ Plot of Median Income")
+#output 3
+output_3 <- ggqqplot(Final_data$Population, title="QQ Plot of Population")
+
+#output 4.a
+output_4.a <- ggplot(Final_data[Final_data$Year == 2020,], aes(Population, Mean_HPI, label=Place)) +
+  labs(title="2020: Population vs. Mean HPI") + 
+  geom_point() +
+  geom_smooth() + 
+  geom_text(aes(label= ifelse(Mean_HPI > quantile(Mean_HPI, 0.95),
+     as.character(Place),'')),hjust=0,vjust=0)
+
+#output 4.b
+output_4.b <- ggplot(Final_data[Final_data$Year == 2020 & Final_data$Place != "District of Columbia",], aes(Population, Mean_HPI, label=Place)) +
+  labs(title="2020: Population (dropping DC) vs. Mean HPI") +
+  geom_point() +
+  geom_smooth() + 
+  geom_text(aes(label= ifelse(Mean_HPI > quantile(Mean_HPI, 0.95),
+     as.character(Place),'')),hjust=0,vjust=0)
+
+model1 <- lm(Final_data$Population~ Final_data$Mean_HPI+Final_data$Mid_Income)
+
+#output 8
+output_8 <- summary(model1)
+
+model2 <- lm(Final_data$Mean_HPI ~ Final_data$Mid_Income + Final_data$Population )
+#output 9
+output_9 <- summary(model2)
+
+year_sum <- Final_data %>% group_by(Year) %>%
+  summarize(hpi.mean = mean(Mean_HPI),hpi.mid = median(Mean_HPI))
+
+#output 5.a
+output_5.a <- ggplot(Final_data, aes(Year, Mean_HPI)) +
+  labs(title="Mean HPI Over Time") +
+  geom_point() +
+  geom_point(data = year_sum, aes(x = Year, y = hpi.mean), color="orange", size = 3) +
+  geom_point(data = year_sum, aes(x = Year, y = hpi.mid), color="blue", size=3) +
+  geom_smooth() +
+  geom_text(aes(label= ifelse(Mean_HPI > quantile(Mean_HPI, 0.99),
+     as.character(Place),'')),hjust=0,vjust=0)
+
+year_sum <- Final_data[Final_data$Place != "District of Columbia",] %>% group_by(Year) %>%
+  summarize(hpi.mean = mean(Mean_HPI),hpi.mid = median(Mean_HPI))
+
+#output 5.b
+output_5.b <- ggplot(Final_data[Final_data$Place != "District of Columbia",], aes(Year, Mean_HPI)) +
+  labs(title="Mean HPI (dropping DC) Over Time") +
+  geom_point() +
+  geom_point(data = year_sum, aes(x = Year, y = hpi.mean), color="orange", size = 3) +
+  geom_point(data = year_sum, aes(x = Year, y = hpi.mid), color="blue", size=3) +
+  geom_smooth() +
+  geom_text(aes(label= ifelse(Mean_HPI > quantile(Mean_HPI, 0.99),
+     as.character(Place),'')),hjust=0,vjust=0)
+
+year_sum_inc <- Final_data[Final_data$Place != "District of Columbia",] %>% group_by(Year) %>%
+  summarize(inc.mean = mean(Mid_Income),inc.mid = median(Mid_Income))
+
+#output 10
+output_10 <- ggplot(Final_data[Final_data$Place != "District of Columbia",], aes(Year, Mid_Income)) +
+  labs(title="Median Income (dropping DC) Over Time") +
+  geom_point() +
+  geom_point(data = year_sum_inc, aes(x = Year, y = inc.mean), color="orange", size = 3) +
+  geom_point(data = year_sum_inc, aes(x = Year, y = inc.mid), color="blue", size=3) +
+  geom_smooth() +
+  geom_text(aes(label= ifelse(Mid_Income > quantile(Mid_Income, 0.99),
+     as.character(Place),'')),hjust=0,vjust=0)
+
+year_sum_pop <- Final_data[Final_data$Place != "District of Columbia",] %>% group_by(Year) %>%
+  summarize(pop.mean = mean(Population),pop.mid = median(Population))
+
+#output 11
+output_11 <- ggplot(Final_data[Final_data$Place != "District of Columbia",], aes(Year, Population)) +
+  labs(title="Population (dropping DC) Over Time") +
+  geom_point() +
+  geom_point(data = year_sum_pop, aes(x = Year, y = pop.mean), color="orange", size = 3) +
+  geom_point(data = year_sum_pop, aes(x = Year, y = pop.mid), color="blue", size=3) +
+  geom_smooth() +
+  geom_text(aes(label= ifelse(Population > quantile(Population, 0.99),
+     as.character(Place),'')),hjust=0,vjust=0)
+
+#output 6
+output_6 <- hist(Final_data$Mean_HPI/Final_data$Mid_Income)
+#output 7
+output_7 <- ggqqplot(Final_data$Mean_HPI/Final_data$Mid_Income)
+
+```
+
+```{r timeSer, include=FALSE}
+#forecasting model and it's accuracy
+
+#append "train" and "test" class
+Class<- c("train", "train", "train", "train", "train", "train", "train", "train", "train", "train", "train", "test", "test", "test", "test", "test", "train", "train", "train", "train", "train")
+Final_data$Class<-Class
+
+#create train/test subsets
+dat_train_10 <- subset(Final_data, Class == "train" & Year< 2011)
+dat_test <- subset(Final_data, Class == "test")
+
+dat_test
+
+#create time series function for Alabama
+
+ts_hpi <- ts(dat_train_10[,3], start = 2000, end = 2010, frequency = 1)
+ts_income <- ts(dat_train_10[,4], start = 2000, end = 2010, frequency = 1)
+
+#create mape accuracy test function
+mape <- function(actual,pred){
+  mape <- mean(abs((actual - pred)/actual))*100
+  return (mape)
+}
+
+#run Holt on years 2000*2010 to forecast values for 2011-2015 in Alabama
+holt_mod_hpi<-holt(ts_hpi, h=5)
+summary(holt_mod_hpi)
+df_holt_hpi<-as.data.frame(holt_mod_hpi)
+
+holt_mod_income<-holt(ts_income, h=5)
+summary(holt_mod_income)
+df_holt_inc<-as.data.frame(holt_mod_income)
+
+#compare forecast for 2011-2015 to actual values for 2011-2015 for Alabama
+dat_test$holt_hpi=df_holt_hpi$"Point Forecast"
+HPI_forecast_15<- mape(dat_test$Mean_HPI, dat_test$naive)
+
+dat_test$holt_inc=df_holt_inc$"Point Forecast"
+income_forecast_15<- mape(dat_test$Mid_Income, dat_test$naiveinc)
+
+#run forecast for 2021-2025 for Alabama
+ts_hpi_2025<- ts(Final_data[,3], start = 2000, end = 2020, frequency = 1)
+ts_income_2025<- ts(Final_data[,4], start = 2000, end = 2020, frequency = 1)
+
+holt_25_hpi<- holt(ts_hpi_2025, h=5)
+
+#output 12
+output_12 <- summary(holt_25_hpi)
+
+holt_25_income<- holt(ts_income_2025, h=5)
+
+#output 13
+output_13 <- summary(holt_25_income)
+
+#naive model forecast
+naive_mod<-naive(ts_hpi, h=5)
+dat_test$naive<-201.355
+
+#output 14
+output_14 <- mape(dat_test$Mean_HPI,dat_test$naive)
+
+naive_mod_income<-naive(ts_income, h=5)
+dat_test$naiveinc<-40933
+
+#output 15
+output_15 <- mape(dat_test$Mid_Income,dat_test$naiveinc)
+
+```
+
+# Part 1: Research Question
+
+Do more people move based on cost of housing and income during times of economic uncertainty? Times of economic uncertainty in this timespan relate to the Great Recession (2008-2010) and, more recently, the impacts of COVID-19. While there are other conditions that cause economic hardship for different groups of people, everyone was affected by the two events stated earlier. Based on the inter-state migration of people in recent years, we are hypothesizing that the population for each state fluctuates based on the Housing Price Index and income.
+
+# Part 2: Significance of Research
+
+Two members of the group live in states where there has been a huge influx of people from areas with higher housing costs recently, thus impacting housing prices in the new areas. By understanding this phenomenon via testing the hypothesis that more people are moving during times of economic uncertainty, like the COVID-19 pandemic, we may be able to better predict how housing costs impact population growth in each state. On a smaller level, this could help prepare people for what to expect in future housing searches. However, on a larger level, this could help people in the Planning, Development, and Survey sectors plan for more efficient types of infrastructure needed to support this influx of people. 
+
+# Part 3: Datasets Used
+
+The final dataset used for analysis consists of mean Housing Price Index, median income and population for each state for the years 2000-2020. The inputs for this final dataset consists of 5 separate datasets described below. Since most states have different costs of living, income, and data, the data was sorted by state to provide similar context for each data point. 
+
+The data for the Housing Price Index (HPI) was from the Master HPI database on the Federal Housing Finance Agency’s website (https://www.fhfa.gov/DataTools/Downloads/Pages/House-Price-Index-Datasets.aspx#mpo).^[Federal Housing Finance Agency. “Get Started Here:” House Price Index Datasets | Federal Housing Finance Agency. Federal Housing Finance Agency, April 1, 2021. https://www.fhfa.gov/DataTools/Downloads/Pages/House-Price-Index-Datasets.aspx#mpo] 
+The HPI is a measure of the average cost of homes on a monthly basis in thousands of dollars. In cleaning this data, the mean of the HPI values for each year by state (including Washington, D.C.) was used to show the growth of housing costs on an annual basis between 2000 and 2020.
+
+The data for the median household income by state was taken from the U.S. Census Bureau, specifically the table H-8 Median Household income by State from https://www.census.gov/data/tables/time-series/demo/income-poverty/historical-income-households.html.^[US Census Bureau. “Historical Income Tables: Households.” Census.gov. US Census Bureau, November 8, 2021. https://www.census.gov/data/tables/time-series/demo/income-poverty/historical-income-households.html] The income data was already compiled on an annual basis, so the data for the years 2000-2020 was pulled and sorted by state. In doing so, it painted a clear picture of income trends over the past two decades.
+
+The population data for 2000-2020 was broken in three tables in the U.S. Census Bureau website. 
+
+The data for 2000-2010 is from: https://www.census.gov/data/tables/time-series/demo/popest/intercensal-2000-2010-state.html.^[US Census Bureau. “Historical Income Tables: Households.” Census.gov. US Census Bureau, November 8, 2021. https://www.census.gov/data/tables/time-series/demo/income-poverty/historical-income-households.html] 
+The data for 2010-2019 is from: https://www.census.gov/data/tables/time-series/demo/popest/2010s-state-total.html.^[US Census Bureau. “State Intercensal Tables: 2000-2010.” Census.gov. US Census Bureau, October 8, 2021. https://www.census.gov/data/tables/time-series/demo/popest/intercensal-2000-2010-state.html] 
+Finally, the data for 2020 is from: https://www.census.gov/data/tables/time-series/demo/popest/2020s-state-total.html.^[US Census Bureau. “State Population Totals and Components of Change: 2010-2019.” Census.gov. US Census Bureau, November 4, 2021. https://www.census.gov/data/tables/time-series/demo/popest/2010s-state-total.html] 
+
+The data in these three tables were already sorted by state and year, but required additional cleaning to be consistent with the other data.
+
+# Part 4: Data Preparation 
+
+A lot of the datasets used in this project needed to be cleaned and organized in order to get their values to line up with each other correctly. Within the HPI data, the column names needed to be matched with the new data frame and sorted by year. For the income data, we had to pull specific columns to exclude the standard error columns for each year and exclude the row containing the United States. We included only the years 2000-2020. There were also two “tables” in that excel file - one in “current dollars” and one in “2020 dollars”. We went with the “current dollars” table since the HPI would be in the current dollars as well. 
+
+The majority of the location exclusions came in the census data, because the census includes territories such as Puerto Rico in the data while the HPI only included states and Washington, D.C. Cleaning and compiling the population data was a bit more tedious than the income data despite being from the same source. Not only was the population data split between three files, but there were also inconsistencies between the population state labels and the labels in the previously established dataset. There were some extra characters in the “State” column in each file. In order to get the population values to match the income and HPI data for each state, the data had to be cleaned in order to remove these excess characters and establish consistency between the “State” columns.
+
+When it comes to outliers, Washington, D.C. was the biggest and it heavily skewed the mean HPI data for places with lower populations (outputs 4.a and 5.a). In order to get a more realistic representation of the relation between HPI and median income, the data from Washington, D.C. had to be dropped. In doing so, it can be seen that there were a few states that did not fit the normal distribution that previously did (outputs 4.b and 5.b).
+
+```{r}
+output_4.a
+output_4.b
+output_5.a
+output_5.b
+```
+
+# Part 5: Data Visualization
+
+Here we visualize the data, generating QQ plots for mean HPI, median income, and state population. From outputs 1, 2, and 3, we see that the data is not normally distributed across each variable.     
+
+```{r}
+output_1
+output_2
+output_3
+```
+
+# Part 6: Methodology behind the Model
+
+In this case, a linear model and a time series graph was used to get a clear picture of growth trends within the mean HPI, median income, and total population for each state from 2000 to 2020. The linear model is a model for a continuous outcome Y (i.e. population) based on the covariates X (i.e. mean HPI and median income), and can be used to fit linear models to data frames. Given a dataset of n statistical measures $\{y_i, x_{i1}, ... , x_{ip}\}_{i=1}^n$, the model takes on the form^[Wikipedia. “Linear Regression.” Wikipedia. Wikimedia Foundation, March 11, 2022. https://en.wikipedia.org/wiki/Linear_regression]: 
+
+$$y_i = \beta_0 + \beta_1 x_{i1} + ... + \beta_p x_{ip} + \epsilon_i \space\text{,} \quad i=1,...,n$$
+
+The function “summary()” of the linear model in R is used to obtain and print a summary and analysis of the variance table of the results. R-squared values, p-values for co-variances X, and the overall p-value are included in the summary. The null hypothesis for the linear model is that the individual states’ mean HPI and median income have no impact on their respective states’ populations. 
+
+The time series graph can be used to accurately show past data trends based on units of time, as well as forecast future statistics based on previous results. When it comes to forecasting and determining its error, there are multiple methods that can be used. While some are more accurate than others based on the application, in our case it was best to use Holt’s method. Holt’s method is found to be more accurate because it generates forecasts by providing more weight to recent trends as opposed to past observations.^[Singh, Deepika. “Deepika Singh.” Time Series Forecasting Using R. Pluralsight, July 12, 2019. https://www.pluralsight.com/guides/time-series-forecasting-using-r] Given that the time period of our data spans two decades, it was important to find a forecast that takes all of the data into consideration. The method used in determining the error of the forecast is Mean Absolute Percentage Error (MAPE). MAPE measures the performance of regression models in a percentage. It is found by comparing the forecasted value to the actual value using the following equation: 
+
+$$M = \dfrac{1}{n}\sum_{t=1}^{n}\left|\dfrac{A_t-F_t}{A_t}\right|$$
+
+The lower the MAPE score, the more accurate the forecast is. Fortunately, running the “summary()” function on the Holt model within R also generates a MAPE score in addition to other error metrics for comparison, eliminating the need to calculate it by hand.^[Allwright, Stephen. “What Is a Good MAPE Score and How Do I Calculate It?” Stephen Allwright. Stephen Allwright, November 13, 2021. https://stephenallwright.com/good-mape-score/]
+
+# Part 7: Data Analysis
+
+The linear model (output 8) for state population with the co-variances X of mean HPI and median income has the p-value of 0.1885, a very low Multiple R-squared (0.00312), and a very low adjusted R-squared value (0.001253), which means we cannot reject the null hypothesis that the individual states’ mean HPI and median income has no impact on the respective state population. Based on this non-rejection of the null hypothesis, we decided to explore the impact of the states’ mean HPI by their respective median incomes and populations. The summary of the new linear model (output 9) with these adjusted parameters has a much higher Multiple R-squared value (0.4739) and Adjusted R-squared value (0.4729) in addition to the super low p-value of 2.2e-16. Since the p-value is below the 0.05 threshold, we can reject the null hypothesis that the states’ median incomes and populations have no impact on the respective states’ mean HPI. Furthermore, there were three stars (aka p-value of 0) for median income but no stars (aka p-value above 0.05) for the population, which indicate that the median income is a significant factor on the HPI whereas the population isn’t.
+
+Based on the time series graphs (outputs 5.b and 10), you can see that the growth of both HPI and income decreased and slowed at the start of the recession. However, when it came to the growth of population by state, it’s evident that growth remained the same without any of the slowing or decreasing we saw with HPI and income (output 11). 
+
+Since our initial hypothesis that state populations fluctuate based on HPI and income was incorrect, we decided to forecast the HPI and income for the state of Alabama for the next five years using Holt’s method. In doing so, this paints a picture of what people can expect to happen with their housing costs and if their income is projected to keep up. You can see that both HPI and income are expected to keep going up (outputs 12 and 13, respectively). However, the HPI is increasing approximately 5.5% annually, while the median income is increasing much slower, approximately 1.5% annually. 
+
+```{r}
+output_8
+output_9
+output_10
+output_11
+output_12
+output_13
+```
+
+# Part 8: Model Evaluation
+
+Linear model is a good choice to evaluate the impact of states’ population by mean HPI and median income (and after initial analysis, the impact of states’ mean HPI by median income and state population), because it allows us to see which covariance X has a significant contribution/impact (if any) on the Y. 		
+
+For time series forecasting, using the Holt model is a good choice to evaluate the future values of mean HPI and median income. The MAPE score associated with the forecasting was 1.61% for the HPI and 4.25% for the income which tells us that there’s a small percentage of error occurring in the outputs. In other words, the forecast is fairly accurate. If we had used the Naive method, the associated MAPE scores would be larger. Outputs 14 and 15 show MAPE scores of 15.5% and 22.5% for mean HPI and median income, respectively.
+
+```{r}
+output_14
+output_15
+```
+
+# Part 9: Conclusion
+
+Considering the initial question refers to people moving, it was expected that the population for each state would fluctuate more during the years affected by economic uncertainty due to loss of jobs, housing affordability, and other issues related to lower income. However, as you can see by the linear models in the appendix (outputs 8 and 9), change in population is not significantly related to HPI or income. We came up with a second hypothesis: the mean HPI is affected by the median income and state population. The linear model’s summary indicated that the median income is a significant factor whereas the population isn’t. This paints a picture that HPI and income are more correlated with each other than population growth.	
+
+Even though we found that the cost of housing is not tied to population fluctuation, the time series’ forecast is still a relevant tool that can be useful in helping predict trends. In this instance, twenty years of the mean HPI and median income were used to forecast the next five years of HPI and income via Holt’s Smoothing Method for the state of Alabama. In doing so, it provided additional insight into the disproportional growth of housing costs compared to income within Alabama. 	
+
+# Appendix A: Source  
+Allwright, Stephen. “What Is a Good MAPE Score and How Do I Calculate It?” Stephen Allwright. Stephen Allwright, November 13, 2021. https://stephenallwright.com/good-mape-score/
+
+Federal Housing Finance Agency. “Get Started Here:” House Price Index Datasets | Federal Housing Finance Agency. Federal Housing Finance Agency, April 1, 2021
+https://www.fhfa.gov/DataTools/Downloads/Pages/House-Price-Index-Datasets.aspx#mpo
+
+US Census Bureau. “Historical Income Tables: Households.” Census.gov. US Census Bureau, November 8, 2021. https://www.census.gov/data/tables/time-series/demo/income-poverty/historical-income-households.html
+
+US Census Bureau. “State Intercensal Tables: 2000-2010.” Census.gov. US Census Bureau, October 8, 2021. https://www.census.gov/data/tables/time-series/demo/popest/intercensal-2000-2010-state.html
+
+US Census Bureau. “State Population Totals and Components of Change: 2010-2019.” Census.gov. US Census Bureau, November 4, 2021. https://www.census.gov/data/tables/time-series/demo/popest/2010s-state-total.html
+
+US Census Bureau. “State Population Totals and Components of Change: 2020-2021.” Census.gov. US Census Bureau, December 21, 2021. https://www.census.gov/data/tables/time-series/demo/popest/2020s-state-total.html
+
+Wikipedia. “Linear Regression.” Wikipedia. Wikimedia Foundation, March 11, 2022. https://en.wikipedia.org/wiki/Linear_regression. 
+Singh, Deepika. “Deepika Singh.” Time Series Forecasting Using R. Pluralsight, July 12, 2019. https://www.pluralsight.com/guides/time-series-forecasting-using-r 
+
+# Appendix B: Code 
+
+```{r ref.label="dataPrep",eval=FALSE}
+```
+```{r ref.label="dataVis",eval=FALSE}
+```
+```{r ref.label="timeSer",eval=FALSE}
+```
+
+# Appendix C: Data 
+
+```{r}
+data_glimpse
+```
+
